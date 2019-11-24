@@ -118,7 +118,7 @@ export abstract class Document implements TextDocument {
     }
 
     private getLineOffsets() {
-        const lineOffsets = [];
+        const lineOffsets:number[] = [];
         const text = this.getText();
         let isLineStart = true;
 
