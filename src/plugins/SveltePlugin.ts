@@ -149,7 +149,7 @@ function makePreprocessor(document: SvelteDocument, preprocessors: PreprocessorG
                     source: document.script,
                     transpiled: preprocessor.transpiledDocument.script,
                     code: res.code,
-                    map: res.map,
+                    map: res.map as string | RawSourceMap,
                 });
             }
             return res;
@@ -164,7 +164,7 @@ function makePreprocessor(document: SvelteDocument, preprocessors: PreprocessorG
                     source: document.style,
                     transpiled: preprocessor.transpiledDocument.style,
                     code: res.code,
-                    map: res.map,
+                    map: res.map as string | RawSourceMap,
                 });
             }
             return res;
