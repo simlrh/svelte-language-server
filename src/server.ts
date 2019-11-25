@@ -11,6 +11,7 @@ import { SvelteDocument } from './lib/documents/SvelteDocument';
 import { SveltePlugin } from './plugins/SveltePlugin';
 import { HTMLPlugin } from './plugins/HTMLPlugin';
 import { CSSPlugin } from './plugins/CSSPlugin';
+import { TSSveltePlugin } from './plugins/TSSveltePlugin'
 import { wrapFragmentPlugin } from './api/wrapFragmentPlugin';
 import { TypeScriptPlugin } from './plugins/TypeScriptPlugin';
 import _ from 'lodash';
@@ -38,6 +39,7 @@ export function startServer() {
     manager.register(new HTMLPlugin());
     manager.register(wrapFragmentPlugin(new CSSPlugin(), CSSPlugin.matchFragment));
     manager.register(wrapFragmentPlugin(new TypeScriptPlugin(), TypeScriptPlugin.matchFragment));
+    manager.register(new TSSveltePlugin());
 
     connection.onInitialize(evt => {
         return {

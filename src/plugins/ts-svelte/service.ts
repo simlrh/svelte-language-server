@@ -92,9 +92,22 @@ export function createLanguageService(
         compilerOptions = { ...compilerOptions, ...parsedConfig.options };
     }
 
+    //we force some options
+    let forcedOptions: ts.CompilerOptions = { 
+        noEmit: true,
+        declaration: false,
+        jsx: ts.JsxEmit.Preserve,
+        jsxFactory: "h",
+        skipLibCheck: true
+    }
+
+    compilerOptions = { ...compilerOptions, ...forcedOptions }
+    const svelteTsPath = dirname(require.resolve('ts-svelte'))
+    const svelteTsxFiles = ['./svelte-shims.d.ts', './svelte-jsx.d.ts'].map(f => resolve(svelteTsPath, f));
+
     const host: ts.LanguageServiceHost = {
         getCompilationSettings: () => compilerOptions,
-        getScriptFileNames: () => Array.from(new Set([...files, ...Array.from(documents.keys())])),
+        getScriptFileNames: () => Array.from(new Set([...files, ...Array.from(documents.keys()), ...svelteTsxFiles])),
         getScriptVersion(fileName: string) {
             const doc = getSvelteSnapshot(fileName);
             return doc ? String(doc.version) : '0';
