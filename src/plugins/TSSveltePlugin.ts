@@ -16,6 +16,7 @@ import { pathToUrl } from '../utils';
 import { SourceMapConsumer } from 'source-map';
 
 
+
 export class TSSveltePlugin
     implements
     DiagnosticsProvider,
@@ -65,24 +66,27 @@ export class TSSveltePlugin
 
         const lang = getLanguageServiceForDocument(document, this.createDocument);
         const isTypescript = true;
+        const svelteTsxPath =  document.getFilePath()!+".tsx";
 
         let diagnostics: ts.Diagnostic[] = [
-            ...lang.getSyntacticDiagnostics(document.getFilePath()!),
-            ...lang.getSuggestionDiagnostics(document.getFilePath()!),
+            ...lang.getSyntacticDiagnostics(svelteTsxPath),
+            ...lang.getSuggestionDiagnostics(svelteTsxPath),
         ];
 
         if (isTypescript) {
-            diagnostics.push(...lang.getSemanticDiagnostics(document.getFilePath()!));
+            diagnostics.push(...lang.getSemanticDiagnostics(svelteTsxPath));
         }
 
         let sourceMap = getSourceMapForDocument(document);
-        let decoder: { version: number, consumer: SourceMapConsumer } | null = null;
+        let decoder: { version: number, consumer: SourceMapConsumer } | undefined = undefined;
         if (sourceMap) {
-            let decoder = this.consumers.get(document);
+            decoder = this.consumers.get(document);
             if (!decoder || decoder.version != document.version) {
                 decoder = { version: document.version, consumer: await new SourceMapConsumer(sourceMap)};
                 this.consumers.set(document, decoder);
             }
+        } else {
+            console.log("Couldn't get sourcemap for document", document.getFilePath());
         }
 
         return diagnostics.map(diagnostic => ({
@@ -95,19 +99,22 @@ export class TSSveltePlugin
     }
 
     mapDiagnosticLocationToRange(diagnostic: ts.Diagnostic, document: Document, consumer: SourceMapConsumer): Range {
-        if (!diagnostic.file) return convertRange(document, diagnostic)
+        if (!diagnostic.file) {
+            console.log("No diagnostic file, using convertRange")
+            return convertRange(document, diagnostic)
+        }
         if (typeof diagnostic.start != "number") return convertRange(document, diagnostic)
 
         let start = ts.getLineAndCharacterOfPosition(diagnostic.file, diagnostic.start);
-        //these are 0 based, but we want 1 based to match sourcemap and editor etc
-        start.character = start.character + 1;
-        start.line = start.line + 1;
+        
+        start.character = start.character;
+        start.line = start.line;
 
         let end;
         if (typeof diagnostic.length == "number") {
             end = ts.getLineAndCharacterOfPosition(diagnostic.file, diagnostic.start + diagnostic.length);
-            end.character = end.character + 1;
-            end.line = end.line + 1;
+            end.character = end.character;
+            end.line = end.line;
         } else {
             end = {
                 line: start.line,
@@ -117,13 +124,10 @@ export class TSSveltePlugin
 
        
         for (let pos of [start, end]) {
-            if (pos.line == 0) {
-                console.log("invalid pos", start, end, diagnostic.start);
-            }
-            let res = consumer.originalPositionFor({ line: pos.line, column: pos.character })
+            let res = consumer.originalPositionFor({ line: pos.line+1, column: pos.character+1 })
             if (res != null) {
-                pos.line = res.line || 0;
-                pos.character = res.column || 0;
+                pos.line = (res.line || 1) - 1;
+                pos.character = (res.column || 1) - 1;
             }
         }
 

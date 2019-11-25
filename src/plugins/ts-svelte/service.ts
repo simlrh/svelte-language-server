@@ -1,9 +1,10 @@
 import ts from 'typescript';
 import { DocumentSnapshot } from './DocumentSnapshot';
 import { isSvelte } from '../typescript/utils';
-import { dirname, resolve, extname } from 'path';
+import { dirname, resolve } from 'path';
 import { Document } from '../../api';
 import { RawSourceMap } from 'source-map';
+
 
 export interface LanguageServiceContainer {
     updateDocument(document: Document): ts.LanguageService;
@@ -54,10 +55,6 @@ export function getSourceMapForDocument(
     return service.getSourceMap(document);
 }
 
-
-
-
-
 export function createLanguageService(
     tsconfigPath: string,
     createDocument: CreateDocument,
@@ -103,16 +100,17 @@ export function createLanguageService(
 
     compilerOptions = { ...compilerOptions, ...forcedOptions }
     const svelteTsPath = dirname(require.resolve('ts-svelte'))
-    const svelteTsxFiles = ['./svelte-shims.d.ts', './svelte-jsx.d.ts'].map(f => resolve(svelteTsPath, f));
+    const svelteTsxFiles = ['./svelte-shims.d.ts', './svelte-jsx.d.ts'].map(f => ts.sys.resolvePath(resolve(svelteTsPath, f)));
 
     const host: ts.LanguageServiceHost = {
         getCompilationSettings: () => compilerOptions,
-        getScriptFileNames: () => Array.from(new Set([...files, ...Array.from(documents.keys()), ...svelteTsxFiles])),
+        getScriptFileNames: () => Array.from(new Set([...files, ...Array.from(documents.keys()), ...svelteTsxFiles].map(useSvelteTsxName))),
         getScriptVersion(fileName: string) {
             const doc = getSvelteSnapshot(fileName);
             return doc ? String(doc.version) : '0';
         },
         getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
+            console.log("get script snapshot", fileName);
             const doc = getSvelteSnapshot(fileName);
             if (doc) {
                 return doc;
@@ -129,21 +127,20 @@ export function createLanguageService(
                     name,
                     containingFile,
                     compilerOptions,
-                    ts.sys,
+                    {
+                        fileExists,
+                        readFile   
+                    },
                 );
-
-                if (!resolved.resolvedModule && isSvelte(name)) {
-                    return {
-                        resolvedFileName: resolve(dirname(containingFile), name),
-                        extension: extname(name),
-                    };
-                }
 
                 return resolved.resolvedModule!;
             });
         },
 
         readFile(path: string, encoding?: string): string | undefined {
+            if (path.endsWith(".svelte")) {
+                console.log("reading svelte file from language server host", path);
+            }
             return ts.sys.readFile(path, encoding);
         },
     };
@@ -155,20 +152,14 @@ export function createLanguageService(
     };
 
     function updateDocument(document: Document): ts.LanguageService {
-        const preSnapshot = documents.get(document.getFilePath()!);
+        console.log("update document", document.getFilePath());
         const newSnapshot = DocumentSnapshot.fromDocument(document);
-        if (preSnapshot && preSnapshot.scriptKind !== newSnapshot.scriptKind) {
-            // Restart language service as it doesn't handle script kind changes.
-            languageService.dispose();
-            languageService = ts.createLanguageService(host);
-        }
-
-        documents.set(document.getFilePath()!, newSnapshot);
+        documents.set(useSvelteTsxName(document.getFilePath()!), newSnapshot);
         return languageService;
     }
 
     function getSourceMap(document: Document): RawSourceMap | undefined {
-        let snap = getSvelteSnapshot(document.getFilePath()!);
+        let snap = getSvelteSnapshot(document.getFilePath()!+".tsx");
         if (!snap) return;
         return snap.map;
     }
@@ -179,12 +170,42 @@ export function createLanguageService(
             return doc;
         }
 
-        if (isSvelte(fileName)) {
+        if (isSvelteTsx(fileName)) {
+            const originalName = originalNameFromSvelteTsx(fileName);
             const doc = DocumentSnapshot.fromDocument(
-                createDocument(fileName, ts.sys.readFile(fileName) || ''),
-            );
+                createDocument(originalName, ts.sys.readFile(originalName) || ''))
             documents.set(fileName, doc);
             return doc;
         }
+    }
+
+    function isSvelteTsx(fileName: string): boolean {
+        return fileName.endsWith('.svelte.tsx');
+    }
+
+    function originalNameFromSvelteTsx(filename: string) {
+        return filename.substring(0, filename.length -'.tsx'.length)
+    }
+
+    function fileExists(filename: string) {
+        if (isSvelteTsx(filename)) {
+            return ts.sys.fileExists(originalNameFromSvelteTsx(filename))
+        }
+        return ts.sys.fileExists(filename);
+    }
+
+    function readFile(fileName: string) {
+        console.log("Reading file from module resolve");
+        if (!isSvelteTsx) {
+            return ts.sys.readFile(fileName)
+        } 
+        return ts.sys.readFile(originalNameFromSvelteTsx(fileName));
+    }
+
+    function useSvelteTsxName(filename: string) {
+        if (isSvelte(filename)) {
+            return filename+".tsx";
+        }
+        return filename;
     }
 }
