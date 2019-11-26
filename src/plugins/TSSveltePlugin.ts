@@ -27,9 +27,6 @@ export class TSSveltePlugin
 //  DefinitionsProvider,
 //  CodeActionsProvider 
 {
-    //  public static matchFragment(fragment: Fragment) {
-    //      return fragment.details.attributes.tag == 'script';
-    //  }
 
     public pluginId = 'tssvelte';
     public defaultConfig = {

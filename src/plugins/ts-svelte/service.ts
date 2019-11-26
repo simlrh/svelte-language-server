@@ -110,7 +110,7 @@ export function createLanguageService(
             return doc ? String(doc.version) : '0';
         },
         getScriptSnapshot(fileName: string): ts.IScriptSnapshot | undefined {
-            console.log("get script snapshot", fileName);
+           // console.log("get script snapshot", fileName);
             const doc = getSvelteSnapshot(fileName);
             if (doc) {
                 return doc;
@@ -152,7 +152,7 @@ export function createLanguageService(
     };
 
     function updateDocument(document: Document): ts.LanguageService {
-        console.log("update document", document.getFilePath());
+      //  console.log("update document", document.getFilePath());
         const newSnapshot = DocumentSnapshot.fromDocument(document);
         documents.set(useSvelteTsxName(document.getFilePath()!), newSnapshot);
         return languageService;
@@ -195,7 +195,7 @@ export function createLanguageService(
     }
 
     function readFile(fileName: string) {
-        console.log("Reading file from module resolve");
+    //    console.log("Reading file from module resolve");
         if (!isSvelteTsx) {
             return ts.sys.readFile(fileName)
         } 

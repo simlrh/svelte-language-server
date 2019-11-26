@@ -22,7 +22,6 @@ export namespace DocumentSnapshot {
             console.error("Couldn't convert to tsx", e);
         }
         console.info(`converted ${document.getFilePath()} to tsx`);
-        console.info(tsxSource);
               
         const length = tsxSource.length;
 
