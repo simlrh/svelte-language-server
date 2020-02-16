@@ -5,27 +5,24 @@ import {
     Diagnostic,
     OnRegister,
     Host,
-    Range
+    Hover,
+    HoverProvider,
+    Position,
 } from '../api';
 import {
     convertRange,
     mapSeverity
 } from './typescript/utils';
-import { getLanguageServiceForDocument, CreateDocument, getSourceMapForDocument } from './ts-svelte/service';
+import { getLanguageServiceForDocument, CreateDocument } from './ts-svelte/service';
 import { pathToUrl } from '../utils';
-import { SourceMapConsumer } from 'source-map';
 
 
 
 export class TSSveltePlugin
     implements
     DiagnosticsProvider,
-    // HoverProvider,
-    OnRegister//,
-// DocumentSymbolsProvider,
-//  CompletionsProvider,
-//  DefinitionsProvider,
-//  CodeActionsProvider 
+    HoverProvider,
+    OnRegister
 {
 
     public pluginId = 'tssvelte';
@@ -36,10 +33,6 @@ export class TSSveltePlugin
 
     private host!: Host;
     private createDocument!: CreateDocument;
-
-
-    private consumers = new Map<Document, {version: number, consumer: SourceMapConsumer}>();
-
 
     onRegister(host: Host) {
         this.host = host;
@@ -61,33 +54,18 @@ export class TSSveltePlugin
             return [];
         }
 
-        const lang = getLanguageServiceForDocument(document, this.createDocument);
-        const isTypescript = true;
-        const svelteTsxPath =  document.getFilePath()!+".tsx";
+        const lang = await getLanguageServiceForDocument(document, this.createDocument);
+
+        const fileName = document.getFilePath()!;
 
         let diagnostics: ts.Diagnostic[] = [
-            ...lang.getSyntacticDiagnostics(svelteTsxPath),
-            ...lang.getSuggestionDiagnostics(svelteTsxPath),
+            ...lang.getSyntacticDiagnostics(fileName),
+            ...lang.getSuggestionDiagnostics(fileName),
+            ...lang.getSemanticDiagnostics(fileName)
         ];
 
-        if (isTypescript) {
-            diagnostics.push(...lang.getSemanticDiagnostics(svelteTsxPath));
-        }
-
-        let sourceMap = getSourceMapForDocument(document);
-        let decoder: { version: number, consumer: SourceMapConsumer } | undefined = undefined;
-        if (sourceMap) {
-            decoder = this.consumers.get(document);
-            if (!decoder || decoder.version != document.version) {
-                decoder = { version: document.version, consumer: await new SourceMapConsumer(sourceMap)};
-                this.consumers.set(document, decoder);
-            }
-        } else {
-            console.log("Couldn't get sourcemap for document", document.getFilePath());
-        }
-
         return diagnostics.map(diagnostic => ({
-            range:  decoder != null ? this.mapDiagnosticLocationToRange(diagnostic, document, decoder.consumer) : convertRange(document, diagnostic) ,
+            range: convertRange(document, diagnostic),
             severity: mapSeverity(diagnostic.category),
             source: 'ts-svelte',
             message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
@@ -95,40 +73,23 @@ export class TSSveltePlugin
         }));
     }
 
-    mapDiagnosticLocationToRange(diagnostic: ts.Diagnostic, document: Document, consumer: SourceMapConsumer): Range {
-        if (!diagnostic.file) {
-            console.log("No diagnostic file, using convertRange")
-            return convertRange(document, diagnostic)
-        }
-        if (typeof diagnostic.start != "number") return convertRange(document, diagnostic)
-
-        let start = ts.getLineAndCharacterOfPosition(diagnostic.file, diagnostic.start);
-        
-        start.character = start.character;
-        start.line = start.line;
-
-        let end;
-        if (typeof diagnostic.length == "number") {
-            end = ts.getLineAndCharacterOfPosition(diagnostic.file, diagnostic.start + diagnostic.length);
-            end.character = end.character;
-            end.line = end.line;
-        } else {
-            end = {
-                line: start.line,
-                character: start.character,
-            } as ts.LineAndCharacter
+    async doHover(document: Document, position: Position): Promise<Hover | null> {
+        if (!this.host.getConfig<boolean>('tssvelte.hover.enable')) {
+            return null;
         }
 
-       
-        for (let pos of [start, end]) {
-            let res = consumer.originalPositionFor({ line: pos.line+1, column: pos.character+1 })
-            if (res != null) {
-                pos.line = (res.line || 1) - 1;
-                pos.character = (res.column || 1) - 1;
-            }
+        const lang = await getLanguageServiceForDocument(document, this.createDocument);
+        const info = lang.getQuickInfoAtPosition(
+            document.getFilePath()!,
+            document.offsetAt(position),
+        );
+        if (!info) {
+            return null;
         }
-
-        return { start, end }
+        let contents = ts.displayPartsToString(info.displayParts);
+        return {
+            range: convertRange(document, info.textSpan),
+            contents: { language: 'ts', value: contents },
+        };
     }
-
 }

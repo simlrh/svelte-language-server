@@ -1,10 +1,10 @@
 import ts from 'typescript';
 import { Document } from '../../api';
 import { RawSourceMap } from 'source-map';
-import { svelte2tsx } from 'ts-svelte'
+import svelte2tsx from 'svelte2tsx';
 
 export interface DocumentSnapshot extends ts.IScriptSnapshot {
-    version: number;
+    document: Document;
     scriptKind: ts.ScriptKind;
     map: RawSourceMap | undefined;
 }
@@ -15,7 +15,7 @@ export namespace DocumentSnapshot {
         let tsxSource = '';
         let tsxMap = undefined;
         try {
-            let tsx = svelte2tsx(text);
+            let tsx = svelte2tsx(text, document.getFilePath()!);
             tsxSource = tsx.code;
             tsxMap = tsx.map;
         } catch (e) {
@@ -26,8 +26,8 @@ export namespace DocumentSnapshot {
         const length = tsxSource.length;
 
         return {
+            document,
             map: tsxMap,
-            version: document.version,
             scriptKind: ts.ScriptKind.TSX, //  getScriptKindFromAttributes(document.getAttributes()),
             getText: (start, end) => tsxSource.substring(start, end),
             getLength: () => length,

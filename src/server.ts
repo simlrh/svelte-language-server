@@ -35,10 +35,10 @@ export function startServer() {
         textDocument => new SvelteDocument(textDocument.uri, textDocument.text),
     );
 
-    manager.register(new SveltePlugin());
-    manager.register(new HTMLPlugin());
-    manager.register(wrapFragmentPlugin(new CSSPlugin(), CSSPlugin.matchFragment));
-    manager.register(wrapFragmentPlugin(new TypeScriptPlugin(), TypeScriptPlugin.matchFragment));
+    //manager.register(new SveltePlugin());
+    //manager.register(new HTMLPlugin());
+    //manager.register(wrapFragmentPlugin(new CSSPlugin(), CSSPlugin.matchFragment));
+    //manager.register(wrapFragmentPlugin(new TypeScriptPlugin(), TypeScriptPlugin.matchFragment));
     manager.register(new TSSveltePlugin());
 
     connection.onInitialize(evt => {
