@@ -169,11 +169,44 @@ export function createLanguageService(
 
             return info && {
                 ...info,
-                textSpan: {
-                    ...info.textSpan,
-                    start: getOriginalIndex(info.textSpan.start),
-                }
+                textSpan: mapTextSpan(getOriginalIndex, info.textSpan),
             };
+        },
+        getDefinitionAndBoundSpan(fileName: string, position: number): ts.DefinitionInfoAndBoundSpan | undefined {
+            const svelteFileName = useSvelteTsxName(fileName); 
+
+            const getGeneratedIndex = getGeneratedIndexForFileName(svelteFileName);
+            const getOriginalIndex = getOriginalIndexForFileName(svelteFileName);
+
+            const defs = originalLanguageService.getDefinitionAndBoundSpan(
+                svelteFileName,
+                getGeneratedIndex(position),
+            );
+
+            return defs && {
+                definitions: defs.definitions?.map(mapDefinition),
+                textSpan: mapTextSpan(getOriginalIndex, defs.textSpan),
+            };
+        },
+        getCompletionsAtPosition(fileName: string, position: number, options: ts.GetCompletionsAtPositionOptions | undefined): ts.WithMetadata<ts.CompletionInfo> | undefined {
+            const svelteFileName = useSvelteTsxName(fileName); 
+
+            const getGeneratedIndex = getGeneratedIndexForFileName(svelteFileName);
+
+            return originalLanguageService.getCompletionsAtPosition(
+                svelteFileName,
+                getGeneratedIndex(position),
+                options
+            );
+        },
+        getNavigationTree(fileName: string): ts.NavigationTree {
+            const svelteFileName = useSvelteTsxName(fileName); 
+
+            const getOriginalIndex = getOriginalIndexForFileName(svelteFileName);
+
+            const tree = originalLanguageService.getNavigationTree(svelteFileName);
+            
+            return mapTree(getOriginalIndex)(tree);
         }
     };
 
@@ -197,7 +230,10 @@ export function createLanguageService(
     }
 
     function originalNameFromSvelteTsx(filename: string) {
-        return filename.substring(0, filename.length -'.tsx'.length)
+        const last4 = filename.substring(filename.length - '.tsx'.length);
+        return last4 === '.tsx'
+            ? filename.substring(0, filename.length -'.tsx'.length)
+            : filename;
     }
 
     function fileExists(filename: string) {
@@ -246,7 +282,7 @@ export function createLanguageService(
             }
             const generatedPosition = ts.getLineAndCharacterOfPosition(generated, index);
             const res = consumer.originalPositionFor({ line: generatedPosition.line+1, column: generatedPosition.character+1 });
-            const originalPosition = res ? { line: (res.line || 1) - 1, character: (res.column || 1) - 1 } : generatedPosition;
+            const originalPosition = res.line ? { line: (res.line || 1) - 1, character: (res.column || 1) - 1 } : generatedPosition;
             return original.offsetAt(originalPosition);
         }
     }
@@ -267,13 +303,22 @@ export function createLanguageService(
                 column: originalPosition.character + 1
             });
 
-            const generatedPosition = res
+            const generatedPosition = res.line
                 ? { line: (res.line || 1) - 1, character: (res.column || 1) - 1 }
                 : originalPosition;
 
-            console.log(generated.getText(), generatedPosition);
-
             return generated.getPositionOfLineAndCharacter(generatedPosition.line, generatedPosition.character);
+        }
+    }
+
+    function mapTree(getOriginalIndex: ReturnType<typeof getOriginalIndexForFileName>) {
+        return function map (tree: ts.NavigationTree): ts.NavigationTree {
+            return {
+                ...tree,
+                spans: tree.spans.map(span => mapTextSpan(getOriginalIndex, span)),
+                nameSpan: mapTextSpan(getOriginalIndex, tree.nameSpan),
+                childItems: tree.childItems && tree.childItems.map(map),
+            };
         }
     }
 
@@ -286,6 +331,40 @@ export function createLanguageService(
                 start: diagnostic.start === undefined ? undefined : getOriginalIndex(diagnostic.start),
             }
         }
+    }
+
+    function mapDefinition(definition: ts.DefinitionInfo): ts.DefinitionInfo {
+        return {
+            ...definition,
+            textSpan: mapTextSpan(
+                getOriginalIndexForFileName(definition.fileName),
+                definition.textSpan
+            ),
+            fileName: originalNameFromSvelteTsx(definition.fileName),
+            originalTextSpan: definition.originalFileName ? mapTextSpan(
+                getOriginalIndexForFileName(definition.originalFileName),
+                definition.originalTextSpan
+            ) : undefined,
+            originalFileName: definition.originalFileName && originalNameFromSvelteTsx(definition.originalFileName),
+            contextSpan: mapTextSpan(
+                getOriginalIndexForFileName(definition.fileName),
+                definition.contextSpan
+            ),
+            originalContextSpan: definition.originalFileName ? mapTextSpan(
+                getOriginalIndexForFileName(definition.originalFileName),
+                definition.originalContextSpan
+            ) : undefined,
+        }
+    }
+
+    function mapTextSpan<TS extends ts.TextSpan | undefined>(
+        getOriginalIndex: ReturnType<typeof getOriginalIndexForFileName>,
+        textSpan: TS
+    ): TS {
+        return textSpan && {
+           ...textSpan,
+           start: getOriginalIndex(textSpan.start),
+        };
     }
 
     async function updateDocument(document: Document): Promise<ts.LanguageService> {
